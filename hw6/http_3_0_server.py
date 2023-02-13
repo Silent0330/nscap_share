@@ -136,7 +136,8 @@ class ClientHandler():
                 # keep connection: don't close socket
 
             except:
-                self.close()
+                self.alive = False
+                self.client.close()
                 break
 
     def close(self):

@@ -14,7 +14,7 @@ class HTTPClient:
         self.next_stream_id += 2
         return stream_id
     
-    def connect(self, host="127.0.0.1", port=8080):
+    def connect(self, host="10.0.1.1", port=8080):
         if not self.connecting:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5)
@@ -47,7 +47,7 @@ class HTTPClient:
         }
         wait_count = 0
         while self.connecting:
-            if wait_count > 3000:
+            if wait_count > 300:
                 return None
             if stream_id not in self.recv_streams:
                 return None
@@ -61,7 +61,7 @@ class HTTPClient:
                 del self.recv_streams[stream_id]
                 return response
             wait_count += 1
-            time.sleep(0.001)
+            time.sleep(0.01)
         del self.recv_streams[stream_id]
         return None
 
@@ -76,7 +76,7 @@ class HTTPClient:
                         self.socket.sendall(frame.to_bytes())
                         if frame.flags == 1:
                             end_streams.append(key)
-                        time.sleep(0.001)
+                        time.sleep(0.002)
                 for key in end_streams:
                     del self.send_buffers[key]
             except:
@@ -110,7 +110,6 @@ class HTTPClient:
                     if frame.flags == 1:
                         self.__complete_stream(frame.stream_id)
             except:
-                print("recv out")
                 self.connecting=False
                 self.socket.close()
                 break

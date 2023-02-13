@@ -34,7 +34,7 @@ class HTTPClient:
     def wait_for_response(self, stream_id):
         wait_count = 0
         while self.connecting:
-            if wait_count > 30:
+            if wait_count > 300:
                 return None
             if stream_id not in self.recv_streams:
                 return None
@@ -46,7 +46,7 @@ class HTTPClient:
                 del self.recv_streams[stream_id]
                 return response
             wait_count += 1
-            time.sleep(0.1)
+            time.sleep(0.01)
         del self.recv_streams[stream_id]
         return None
 
@@ -63,7 +63,6 @@ class HTTPClient:
                 response = Parser.parse_response(recv_bytes.decode())
                 self.recv_streams[stream_id] = {'complete': True, 'response': response}
             except:
-                print("recv out")
                 self.connecting=False
                 self.socket.close()
                 break

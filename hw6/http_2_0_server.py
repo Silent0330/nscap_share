@@ -209,7 +209,7 @@ class ClientHandler():
         self.client.close()
 
 class HttpServer_2_0():
-    def __init__(self, host="127.0.0.1", port=8080) -> None:
+    def __init__(self, host="10.0.1.1", port=8080) -> None:
         # Create a socket object
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
