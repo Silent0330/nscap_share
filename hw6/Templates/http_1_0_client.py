@@ -1,29 +1,15 @@
 import socket
 import json
-from Utils import Parser
     
 def send_reqeuest(request, host="127.0.0.1", port=8080):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(5)
-    try:
-        s.connect((host, port))
-    except:
-        return None
-
-    try:
-        s.sendall(request.encode())
-    except:
-        s.close()
-        return None
-
-    # Receive the server's response
-    try:
-        recv_bytes = s.recv(4096)
-        response = Parser.parse_response(recv_bytes.decode())
-    except:
-        s.close()
-        return None
-    s.close()
+    # student implement
+    # send request and return the response
+    response = {
+        'version': "", # e.g. "HTTP/1.0"
+        'status': "", # e.g. "200 OK"
+        'headers': {}, # e.g. {content-type: application/json}
+        'body': ""  # e.g. "{'id': '123', 'key':'456'}"
+    }
     return response
         
 if __name__ == '__main__':

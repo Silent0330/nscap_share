@@ -6,9 +6,6 @@ from hashlib import sha256
 import hmac
 import base64
 import random
-from Utils import Frame
-from Utils import Parser
-import time
 
 def hmac_sha256(data, key):
     key = key.encode('utf-8')
@@ -100,109 +97,41 @@ class ClientHandler():
         self.__send_response(request, response)
 
     def __send_response(self, request, response):
-        response['headers'][':status'] = response['status']
-        stream_id = request['stream_id']
-        self.__send_headers(stream_id, response['headers'])
-        self.__send_body(stream_id, response['body'].encode())
+        # student implement
+        # send response
 
         # Log
         print(f"{self.address[0]} - - {datetime.now().strftime('%d/%m/%y %H:%M:%S')} \"{request['method']} {request['path']} {request['version']}\" {response['status']} -")
 
     def __send_headers(self, stream_id, headers, end_stream=False):
-        hdr = ""
-        for key in headers:
-            hdr += f"{key.lower()}: {headers[key]}\r\n"
-        frame = Frame.create_headers_frame(stream_id, hdr.encode(), end_stream)
-        self.send_buffers[stream_id] = [frame]
+        # student implement
+        # put header frame into send buffer
+        pass
 
     def __send_body(self, stream_id, body):
-        chunk_size = Frame.Frame.max_payload_size
-        while len(body) > chunk_size:
-            frame = Frame.create_data_frame(stream_id, body[:chunk_size])
-            body = body[chunk_size:]
-            self.send_buffers[stream_id].append(frame) 
-        frame = Frame.create_data_frame(stream_id, body, end_stream=True)
-        self.send_buffers[stream_id].append(frame) 
+        # student implement
+        # split the body into data frames
+        # put data frames into send buffer
+        pass
+
 
     def __complete_request(self, stream_id):
-        try:
-            stream = self.recv_streams[stream_id]
-            headers = stream['headers']
-            path, params = Parser.parse_resource(headers[':path'])
-            request = {
-                'stream_id': stream_id,
-                'method': headers[':method'], # e.g. "GET"
-                'path': path, # e.g. "/"
-                'params': params, # e.g. {'id': '123'}
-                'scheme': headers[':scheme'],
-                'version': "HTTP/2.0", # e.g. "HTTP/1.0"
-                'headers': stream['headers'], # e.g. {content-type: application/json}
-                'body': stream['body'].decode('utf-8')  # e.g. "{'id': params['id'], 'key': hmac_sha256(params['id'], 'http10')}"
-            }
-        except:
-            if stream_id in self.recv_streams:
-                del self.recv_streams[stream_id]
-            return
-        method = request['method']
-        # Check the method and path
-        if method == "GET":
-            self.__do_get(request)
-        elif method == "POST":
-            self.__do_post(request)
-        else:
-            self.__send_response(request, self.__bad_request_response())
+        # student implement
+        # when you recv a complete stream, call this function
+        # handle the request
+        pass
         
     def __send_loop(self):
-        while self.alive:
-            try:
-                end_streams = []
-                keys = list(self.send_buffers.keys())
-                for key in keys:
-                    if len(self.send_buffers[key]) > 0:
-                        frame = self.send_buffers[key].pop(0)
-                        self.client.sendall(frame.to_bytes())
-                        if frame.flags == 1:
-                            end_streams.append(key)
-                for key in end_streams:
-                    del self.send_buffers[key]
-            except:
-                self.alive = False
-                self.client.close()
-                break
+        # student implement
+        # send frames in buffer
+        # use round robin
+        pass
 
 
     def __recv_loop(self):
-        while self.alive:
-            try:
-                # Recv request
-                recv_bytes = self.client.recv(8192)
-
-                # check connection
-                if not recv_bytes:
-                    self.alive = False
-                    self.client.close()
-                    break
-
-                recv_bytes = self.recv_buffer + recv_bytes
-
-                # parse request
-                frames, remian_bytes = Frame.bytes_to_frames(recv_bytes)
-                self.recv_buffer = remian_bytes
-                for frame in frames:
-                    if frame.type == 0: # data
-                        self.recv_streams[frame.stream_id]['body'] += frame.payload
-                    elif frame.type == 1: # header
-                        headers = Parser.parse_header(frame.payload.decode())
-                        self.recv_streams[frame.stream_id] = {
-                            'headers': headers,
-                            'body': b''
-                        }
-                    if frame.flags == 1:
-                        self.__complete_request(frame.stream_id)
-            except:
-                self.alive = False
-                self.client.close()
-                break
+        # student implement
+        # recv data and handle the request
+        pass
 
     def close(self):
         self.alive = False

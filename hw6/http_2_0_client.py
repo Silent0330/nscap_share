@@ -39,40 +39,50 @@ class HTTPClient:
             self.recv_streams[stream_id]['complete'] = True
 
     def wait_for_response(self, stream_id):
+        response = {
+            'version': "HTTP/2.0", # e.g. "HTTP/1.0"
+            'status': "", # e.g. "200 OK"
+            'headers': {}, # e.g. {content-type: application/json}
+            'body': ""  # e.g. "{'id': params['id'], 'key': hmac_sha256(params['id'], 'http10')}"
+        }
+        wait_count = 0
         while self.connecting:
-            time.sleep(0.001)
+            if wait_count > 3000:
+                return None
             if stream_id not in self.recv_streams:
                 return None
-            if self.recv_streams[stream_id]['complete']:
+            if 'complete' in self.recv_streams[stream_id] and self.recv_streams[stream_id]['complete']:
                 try:
-                    headers = self.recv_streams[stream_id]['headers']
-                    body = self.recv_streams[stream_id]['body'].decode('utf-8')
-                    status = headers[':status']
+                    response['headers'] = self.recv_streams[stream_id]['headers']
+                    response['body'] = self.recv_streams[stream_id]['body'].decode('utf-8')
+                    response['status'] = response['headers'][':status']
                 except:
                     return None
                 del self.recv_streams[stream_id]
-                return status, headers, body
+                return response
+            wait_count += 1
+            time.sleep(0.001)
         del self.recv_streams[stream_id]
         return None
 
     def __send_loop(self):
         while self.connecting:
-            # try:
-            end_streams = []
-            keys = list(self.send_buffers.keys())
-            for key in keys:
-                if len(self.send_buffers[key]) > 0:
-                    frame = self.send_buffers[key].pop(0)
-                    self.socket.sendall(frame.to_bytes())
-                    if frame.flags == 1:
-                        end_streams.append(key)
-            for key in end_streams:
-                del self.send_buffers[key]
-            # except:
-            #     print("send out")
-            #     self.connecting = False
-            #     self.socket.close()
-            #     break
+            try:
+                end_streams = []
+                keys = list(self.send_buffers.keys())
+                for key in keys:
+                    if len(self.send_buffers[key]) > 0:
+                        frame = self.send_buffers[key].pop(0)
+                        self.socket.sendall(frame.to_bytes())
+                        if frame.flags == 1:
+                            end_streams.append(key)
+                        time.sleep(0.001)
+                for key in end_streams:
+                    del self.send_buffers[key]
+            except:
+                self.connecting = False
+                self.socket.close()
+                break
 
     def __recv_loop(self):
         while self.connecting:
@@ -108,36 +118,19 @@ class HTTPClient:
     def __send_headers(self, stream_id, headers, end_stream=False):
         hdr = ""
         for header in headers:
-            hdr += f"{header[0]} = {header[1]}\r\n"
+            hdr += f"{header[0]}: {header[1]}\r\n"
         frame = Frame.create_headers_frame(stream_id, hdr.encode(), end_stream)
         self.send_buffers[stream_id] = [frame]
 
     def __send_body(self, stream_id, body):
         chunk_size = Frame.Frame.max_payload_size
+        chunk_size = 1
         while len(body) > chunk_size:
             frame = Frame.create_data_frame(stream_id, body[:chunk_size])
             body = body[chunk_size:]
             self.send_buffers[stream_id].append(frame) 
         frame = Frame.create_data_frame(stream_id, body, end_stream=True)
         self.send_buffers[stream_id].append(frame) 
-
-    def send_headers(self, headers, end_stream=False):
-        if not self.connecting:
-            return
-        stream_id = self.__get_next_stream_id()
-        request = {
-            'headers': headers,
-        }
-        self.recv_streams[stream_id] = {'request': request, 'complete': False, 'headers': '', 'body': b''}
-        self.__send_headers(stream_id, headers, end_stream=end_stream),
-        return stream_id
-
-    def send_body(self, stream_id, body):
-        if not self.connecting:
-            return
-        self.recv_streams[stream_id]['request']['body'] = body
-        self.__send_body(stream_id, body),
-        return stream_id
         
     def send_reqeuest(self, request):
         if not self.connecting:
@@ -148,7 +141,7 @@ class HTTPClient:
         if 'body' in request:
             self.__send_headers(stream_id, headers)
             body = request['body']
-            self.send_body(stream_id, body)
+            self.__send_body(stream_id, body)
         else:
             self.__send_headers(stream_id, headers, end_stream=True)
         return stream_id
@@ -157,8 +150,6 @@ class HTTPClient:
         self.connecting = False
         self.socket.close()
         
-
-
 if __name__ == '__main__':
     client = HTTPClient()
     client.connect()
@@ -169,20 +160,16 @@ if __name__ == '__main__':
         (':scheme', 'http'),
         (':authority', '127.0.0.1:8080')
     ]
-    body = b''
+    body = b'0' * 10
     request = {
-        'headers': headers
+        'headers': headers,
+        'body': body
     }
 
-    stream_id_1 = client.send_headers(headers)
-    time.sleep(0.0001)
-    stream_id_2 = client.send_headers(headers)
-    time.sleep(0.0001)
-    stream_id_1 = client.send_body(stream_id_1, body)
-    time.sleep(0.0001)
-    stream_id_2 = client.send_body(stream_id_2, body)
+    stream_id_1 = client.send_reqeuest(request)
+    stream_id_2 = client.send_reqeuest(request)
     response = client.wait_for_response(stream_id_1)
-    data = response[2]
+    data = response['body']
     print(stream_id_1, response)
     response = client.wait_for_response(stream_id_2)
     print(stream_id_2, response)
@@ -193,13 +180,11 @@ if __name__ == '__main__':
         (':authority', '127.0.0.1:8080'),
         ('content-type', 'application/json')
     ]
-    body = data.encode('utf-8')
-    print(body)
+    body = data.encode()
     request = {
         'headers': headers,
         'body': body
     }
-    time.sleep(0.0001)
     stream_id_3 = client.send_reqeuest(request)
     response = client.wait_for_response(stream_id_3)
     print(stream_id_3, response)

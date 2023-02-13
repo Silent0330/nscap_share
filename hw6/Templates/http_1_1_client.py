@@ -1,35 +1,32 @@
 import socket
 import json
-from Utils import Parser
+
+class HTTPClient:
+    def __init__(self, host="127.0.0.1", port=8080) -> None:
+        self.connecting = False
+        self.host=host
+        self.port=port
     
-def send_reqeuest(request, host="127.0.0.1", port=8080):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(5)
-    try:
-        s.connect((host, port))
-    except:
-        return None
-
-    try:
-        s.sendall(request.encode())
-    except:
-        s.close()
-        return None
-
-    # Receive the server's response
-    try:
-        recv_bytes = s.recv(4096)
-        response = Parser.parse_response(recv_bytes.decode())
-    except:
-        s.close()
-        return None
-    s.close()
-    return response
+    def send_reqeuest(self, request):
+        # student implement
+        # send request and return the response
+        response = {
+            'version': "", # e.g. "HTTP/1.0"
+            'status': "", # e.g. "200 OK"
+            'headers': {}, # e.g. {content-type: application/json}
+            'body': ""  # e.g. "{'id': '123', 'key':'456'}"
+        }
+        return response
         
+        
+
+
+
 if __name__ == '__main__':
-    # Send an HTTP GET request to the server
-    request = "GET /get?id=123 HTTP/1.0\r\n\r\n"
-    response = send_reqeuest(request)
+    client = HTTPClient()
+
+    request = "GET /get?id=123 HTTP/1.1\r\n\r\n"
+    response = client.send_reqeuest(request)
     print(response)
     headers = response['headers']
     body = response['body']
@@ -51,8 +48,8 @@ if __name__ == '__main__':
         exit()
 
     # Send an HTTP POST request to the server
-    request = f"POST /post HTTP/1.0\r\nContent-Type: application/json\r\n\r\n{json.dumps(data)}"
-    response = send_reqeuest(request)
+    request = f"POST /post HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{json.dumps(data)}"
+    response = client.send_reqeuest(request)
     print(response)
     headers = response['headers']
     body = response['body']

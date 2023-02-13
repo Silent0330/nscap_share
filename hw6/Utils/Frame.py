@@ -27,7 +27,6 @@ def create_headers_frame(stream_id, payload, end_stream=False):
         raise "payload can't larger than 2^24-1"
     return Frame(length=len(payload), type=1, flags=end_stream, stream_id=stream_id, payload=payload)
 
-
 def bytes_to_frame(data):
     length_type, = struct.unpack(f"!L", data[:4])
     length = length_type >> 8

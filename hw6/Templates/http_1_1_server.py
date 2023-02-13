@@ -6,9 +6,6 @@ from hashlib import sha256
 import hmac
 import base64
 import random
-from Utils import Frame
-from Utils import Parser
-import time
 
 def hmac_sha256(data, key):
     key = key.encode('utf-8')
@@ -23,30 +20,24 @@ class ClientHandler():
         self.client.settimeout(5)
         self.address = address
         self.alive = True
-        self.recv_buffer = b""
-        self.recv_streams = {}
-        self.send_buffers = {}
-
         self.key = hmac_sha256(f'key{random.random()*100}', 'http11')
-        self.recv_thread = threading.Thread(target=self.__recv_loop)
+        self.recv_thread =  threading.Thread(target=self.__recv_loop)
         self.recv_thread.start()
-        self.send_thread = threading.Thread(target=self.__send_loop)
-        self.send_thread.start()
 
     def __bad_request_response(self):
         response = {
-            'version': "HTTP/2.0", # e.g. "HTTP/1.0"
-            'status': "400 Bad Request", # e.g. "200 OK"
-            'headers': {'Content-Type': 'text/html'}, # e.g. {content-type: application/json}
+            'version': "HTTP/1.1", 
+            'status': "400 Bad Request",
+            'headers': {'Content-Type': 'text/html'},
             'body': "<html><body><h1>400 Bad Request</h1></body></html>"  
         }
         return response
         
     def __not_found_response(self):
         response = {
-            'version': "HTTP/2.0", # e.g. "HTTP/1.0"
-            'status': "404 Not Found", # e.g. "200 OK"
-            'headers': {'Content-Type': 'text/html'}, # e.g. {content-type: application/json}
+            'version': "HTTP/1.1", 
+            'status': "404 Not Found",
+            'headers': {'Content-Type': 'text/html'},
             'body': "<html><body><h1>404 Not Found</h1></body></html>" 
         }
         return response
@@ -62,7 +53,7 @@ class ClientHandler():
                                 "<h1>HTTP 1.0</h1>" +\
                                 "</body></html>"
         elif path == "/get":
-            if 'id' in params and len(self.recv_streams) > 1:
+            if 'id' in params:
                 response['status'] = "200 OK"
                 response["headers"] = {'Content-Type': 'application/json'}
                 response['body'] = json.dumps({'id': params['id'], 'key':  self.key})
@@ -100,115 +91,22 @@ class ClientHandler():
         self.__send_response(request, response)
 
     def __send_response(self, request, response):
-        response['headers'][':status'] = response['status']
-        stream_id = request['stream_id']
-        self.__send_headers(stream_id, response['headers'])
-        self.__send_body(stream_id, response['body'].encode())
+        # student implement
+        # send the response
 
         # Log
         print(f"{self.address[0]} - - {datetime.now().strftime('%d/%m/%y %H:%M:%S')} \"{request['method']} {request['path']} {request['version']}\" {response['status']} -")
 
-    def __send_headers(self, stream_id, headers, end_stream=False):
-        hdr = ""
-        for key in headers:
-            hdr += f"{key.lower()}: {headers[key]}\r\n"
-        frame = Frame.create_headers_frame(stream_id, hdr.encode(), end_stream)
-        self.send_buffers[stream_id] = [frame]
-
-    def __send_body(self, stream_id, body):
-        chunk_size = Frame.Frame.max_payload_size
-        while len(body) > chunk_size:
-            frame = Frame.create_data_frame(stream_id, body[:chunk_size])
-            body = body[chunk_size:]
-            self.send_buffers[stream_id].append(frame) 
-        frame = Frame.create_data_frame(stream_id, body, end_stream=True)
-        self.send_buffers[stream_id].append(frame) 
-
-    def __complete_request(self, stream_id):
-        try:
-            stream = self.recv_streams[stream_id]
-            headers = stream['headers']
-            path, params = Parser.parse_resource(headers[':path'])
-            request = {
-                'stream_id': stream_id,
-                'method': headers[':method'], # e.g. "GET"
-                'path': path, # e.g. "/"
-                'params': params, # e.g. {'id': '123'}
-                'scheme': headers[':scheme'],
-                'version': "HTTP/2.0", # e.g. "HTTP/1.0"
-                'headers': stream['headers'], # e.g. {content-type: application/json}
-                'body': stream['body'].decode('utf-8')  # e.g. "{'id': params['id'], 'key': hmac_sha256(params['id'], 'http10')}"
-            }
-        except:
-            if stream_id in self.recv_streams:
-                del self.recv_streams[stream_id]
-            return
-        method = request['method']
-        # Check the method and path
-        if method == "GET":
-            self.__do_get(request)
-        elif method == "POST":
-            self.__do_post(request)
-        else:
-            self.__send_response(request, self.__bad_request_response())
-        
-    def __send_loop(self):
-        while self.alive:
-            try:
-                end_streams = []
-                keys = list(self.send_buffers.keys())
-                for key in keys:
-                    if len(self.send_buffers[key]) > 0:
-                        frame = self.send_buffers[key].pop(0)
-                        self.client.sendall(frame.to_bytes())
-                        if frame.flags == 1:
-                            end_streams.append(key)
-                for key in end_streams:
-                    del self.send_buffers[key]
-            except:
-                self.alive = False
-                self.client.close()
-                break
-
-
     def __recv_loop(self):
-        while self.alive:
-            try:
-                # Recv request
-                recv_bytes = self.client.recv(8192)
-
-                # check connection
-                if not recv_bytes:
-                    self.alive = False
-                    self.client.close()
-                    break
-
-                recv_bytes = self.recv_buffer + recv_bytes
-
-                # parse request
-                frames, remian_bytes = Frame.bytes_to_frames(recv_bytes)
-                self.recv_buffer = remian_bytes
-                for frame in frames:
-                    if frame.type == 0: # data
-                        self.recv_streams[frame.stream_id]['body'] += frame.payload
-                    elif frame.type == 1: # header
-                        headers = Parser.parse_header(frame.payload.decode())
-                        self.recv_streams[frame.stream_id] = {
-                            'headers': headers,
-                            'body': b''
-                        }
-                    if frame.flags == 1:
-                        self.__complete_request(frame.stream_id)
-            except:
-                self.alive = False
-                self.client.close()
-                break
+        # student implement
+        # recv data and handle the request
+        pass
 
     def close(self):
         self.alive = False
         self.client.close()
 
-class HttpServer_2_0():
+class HttpServer_1_1():
     def __init__(self, host="127.0.0.1", port=8080) -> None:
         # Create a socket object
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -229,6 +127,7 @@ class HttpServer_2_0():
             try:
                 # Establish a connection with the client
                 client, address = self.socket.accept()
+                
                 client_handler = ClientHandler(client, address)
 
                 for handler in reversed(self.handler_list):
@@ -239,7 +138,6 @@ class HttpServer_2_0():
             except:
                 # catch socket closed
                 self.alive = False
-                pass
 
 
     def run(self):
@@ -257,7 +155,7 @@ class HttpServer_2_0():
                 handler.close()
 
 if __name__ == '__main__':
-    server = HttpServer_2_0()
+    server = HttpServer_1_1()
     server.run()
 
     while True:

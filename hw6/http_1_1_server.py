@@ -22,89 +22,116 @@ class ClientHandler():
         self.address = address
         self.alive = True
         self.key = hmac_sha256(f'key{random.random()*100}', 'http11')
-        self.thread =  threading.Thread(target=self.__handle_loop)
-        self.thread.start()
+        self.recv_thread =  threading.Thread(target=self.__recv_loop)
+        self.recv_thread.start()
 
-    def __handle_loop(self):
+    def __bad_request_response(self):
+        response = {
+            'version': "HTTP/1.1", 
+            'status': "400 Bad Request",
+            'headers': {'Content-Type': 'text/html'},
+            'body': "<html><body><h1>400 Bad Request</h1></body></html>"  
+        }
+        return response
+        
+    def __not_found_response(self):
+        response = {
+            'version': "HTTP/1.1", 
+            'status': "404 Not Found",
+            'headers': {'Content-Type': 'text/html'},
+            'body': "<html><body><h1>404 Not Found</h1></body></html>" 
+        }
+        return response
+
+    def __do_get(self, request):
+        path = request['path']
+        params = request['params']
+        response = self.__not_found_response()
+        if path == "/":
+            response['status'] = "200 OK"
+            response["headers"] = {'Content-Type': 'text/html'}
+            response['body'] = "<html><body>" +\
+                                "<h1>HTTP 1.0</h1>" +\
+                                "</body></html>"
+        elif path == "/get":
+            if 'id' in params:
+                response['status'] = "200 OK"
+                response["headers"] = {'Content-Type': 'application/json'}
+                response['body'] = json.dumps({'id': params['id'], 'key':  self.key})
+            else:
+                response['status'] = "200 OK"
+                response["headers"] = {'Content-Type': 'application/json'}
+                response['body'] = json.dumps({'id': '', 'key': ''})
+        self.__send_response(request, response)
+
+    def __do_post(self, request):
+        path = request['path']
+        headers = request['headers']
+        response = self.__not_found_response()
+        if path == "/post":
+            if 'content-type' in headers and headers['content-type'] == 'application/json':
+                try:
+                    post_data = json.loads(request['body'])
+                except:
+                    post_data = None
+            else:
+                post_data = None
+            if post_data:
+                if 'id' in post_data and 'key' in post_data and post_data['key'] ==  self.key:
+                    response['status'] = "200 OK"
+                    response["headers"] = {'Content-Type': 'application/json'}
+                    response['body'] = json.dumps({'success':True})
+                    print(post_data['id'], "success")
+                else:
+                    response['status'] = "200 OK"
+                    response["headers"] = {'Content-Type': 'application/json'}
+                    response['body'] = json.dumps({'success':False})
+                    print(post_data['id'], "fail")
+            else:
+                response = self.__bad_request_response()
+        self.__send_response(request, response)
+
+    def __send_response(self, request, response):
+        response_str = f"{response['version']} {response['status']}\r\n"
+
+        for key in response['headers']:
+            response_str += f"{key}: {response['headers'][key]}\r\n"
+        response_str += f"\r\n{response['body']}"
+
+        self.client.sendall(response_str.encode())
+
+        # Log
+        print(f"{self.address[0]} - - {datetime.now().strftime('%d/%m/%y %H:%M:%S')} \"{request['method']} {request['path']} {request['version']}\" {response['status']} -")
+
+    def __recv_loop(self):
         while self.alive:
             try:
                 # Recv request
-                request = self.client.recv(4096).decode()
+                recv_bytes = self.client.recv(4096)
 
                 # check connection
-                if request == "":
+                if not recv_bytes:
                     self.alive = False
                     self.client.close()
                     break
 
                 # parse request
-                method, path, params, version, headers, body = Parser.parse_reqeust(request)
-
-                status = 200
+                request = Parser.parse_reqeust(recv_bytes.decode())
+                print(request)
+                if request == None:
+                    method = ""
+                else:
+                    method = request['method']
                 # Check the method and path
                 if method == "GET":
-                    if path == "/":
-                        response = "HTTP/1.1 200 OK\r\n"
-                        response += "Content-Type: text/html\r\n\r\n"
-                        response += "<html><body>" +\
-                                    "<h1>HTTP 1.0</h1>" +\
-                                    "</body></html>"
-                    elif path == "/get":
-                        if 'id' in params:
-                            response = "HTTP/1.1 200 OK\r\n"
-                            response += "Content-Type: application/json\r\n\r\n"
-                            response += json.dumps({'id': params['id'], 'key': self.key})
-                        else:
-                            response = "HTTP/1.1 200 OK\r\n"
-                            response += "Content-Type: application/json\r\n\r\n"
-                            response += json.dumps({'id': '', 'key': ''})
-                    else:
-                        status = 404
-                        response = "HTTP/1.1 404 Not Found\r\n"
-                        response += "Content-Type: text/html\r\n\r\n"
-                        response += "<html><body><h1>404 Not Found</h1></body></html>"
+                    self.__do_get(request)
                 elif method == "POST":
-                    if path == "/post":
-                        if 'content-type' in headers and headers['content-type'] == 'application/json':
-                            try:
-                                data = json.loads(body)
-                            except:
-                                data = None
-                        else:
-                            data = None
-                        if data:
-                            if 'id' in data and 'key' in data and data['key'] == self.key:
-                                response = "HTTP/1.1 200 OK\r\n"
-                                response += "Content-Type: application/json\r\n\r\n"
-                                response += json.dumps({'success':True})
-                                print(data['id'], "success")
-                            else:
-                                response = "HTTP/1.1 200 OK\r\n"
-                                response += "Content-Type: application/json\r\n\r\n"
-                                response += json.dumps({'success':False})
-                                print(data['id'], "fail")
-                        else:
-                            status = 400
-                            response = "HTTP/1.1 400 Bad Request\r\n"
-                            response += "Content-Type: text/html\r\n\r\n"
-                            response += "<html><body><h1>400 Bad Request</h1></body></html>"
-                    else:
-                        status = 404
-                        response = "HTTP/1.1 404 Not Found\r\n"
-                        response += "Content-Type: text/html\r\n\r\n"
-                        response += "<html><body><h1>404 Not Found</h1></body></html>"
+                    self.__do_post(request)
                 else:
-                    status = 400
-                    response = "HTTP/1.1 400 Bad Request\r\n"
-                    response += "Content-Type: text/html\r\n\r\n"
-                    response += "<html><body><h1>400 Bad Request</h1></body></html>"
+                    self.__send_response(request, self.__bad_request_response())
 
-                # Send the response to the client
-                self.client.sendall(response.encode())
+                # keep connection: don't close socket
 
-                # Log
-                print(f'{self.address[0]} - - {datetime.now().strftime("%d/%m/%y %H:%M:%S")} "{method} {path} {version}" {status} -')
-                
             except:
                 self.alive = False
                 self.client.close()
@@ -145,7 +172,7 @@ class HttpServer_1_1():
 
             except:
                 # catch socket closed
-                pass
+                self.alive = False
 
 
     def run(self):

@@ -7,20 +7,17 @@ class HTTPClient:
         self.connecting = False
         self.host=host
         self.port=port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
     def send_reqeuest(self, request):
         if not self.connecting:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5)
             try:
-                self.socket.connect(("127.0.0.1", 8080))
+                self.socket.connect((self.host, self.port))
                 self.connecting = True
             except:
                 return None
-
         try:
-            print(request.encode())
             self.socket.sendall(request.encode())
         except:
             self.connecting = True
@@ -29,14 +26,14 @@ class HTTPClient:
 
         # Receive the server's response
         try:
-            response = self.socket.recv(4096).decode()
-            version, status, headers, body = Parser.parse_response(response)
+            recv_bytes = self.socket.recv(4096)
+            response = Parser.parse_response(recv_bytes.decode())
         except:
             self.connecting = True
             self.socket.close()
             return None
         
-        return version, status, headers, body
+        return response
         
         
 
@@ -45,37 +42,44 @@ class HTTPClient:
 if __name__ == '__main__':
     client = HTTPClient()
 
-    response = client.send_reqeuest("GET /get?id=123 HTTP/1.1\r\n\r\n")
-    if not response:
-        print('GET failed')
-        exit()
-    version, status, headers, body = response
-    
-    try:
-        data = json.loads(body)
-        if 'id' in data and 'key' in data:
-            print(f"get id={data['id']} key={data['key']}")
-        else:
-            data = None
-    except:
-        data = None
-    
-    if not data:
-        print('GET failed')
+    request = "GET /get?id=123 HTTP/1.1\r\n\r\n"
+    response = client.send_reqeuest(request)
+    print(response)
+    headers = response['headers']
+    body = response['body']
 
-    if data:
-        response = client.send_reqeuest(f"POST /post HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{json.dumps(data)}")
-        if not response:
-            print('POST failed')
-            exit()
-        version, status, headers, body = response
+    if 'content-type' in headers and headers['content-type'] == 'application/json':
         try:
             data = json.loads(body)
-            if 'success' in data:
-                print(f"Get success={data['success']}")
+            if 'id' in data and 'key' in data:
+                print(f"Get id={data['id']} key={data['key']}")
             else:
                 data = None
         except:
             data = None
-        if not data:
-            print('POST failed')
+    else:
+        data = None
+    
+    if data is None:
+        print('Get failed')
+        exit()
+
+    # Send an HTTP POST request to the server
+    request = f"POST /post HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{json.dumps(data)}"
+    response = client.send_reqeuest(request)
+    print(response)
+    headers = response['headers']
+    body = response['body']
+    if 'content-type' in headers and headers['content-type'] == 'application/json':
+        try:
+            data = json.loads(body)
+            if 'success' in data:
+                print(f"Post success={data['success']}")
+            else:
+                data = None
+        except:
+            data = None
+    else:
+        data = None
+    if not data:
+        print('Post failed')

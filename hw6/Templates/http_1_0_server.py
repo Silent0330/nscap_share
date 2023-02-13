@@ -5,7 +5,6 @@ import json
 from hashlib import sha256
 import hmac
 import base64
-from Utils import Parser
 
 def hmac_sha256(data, key):
     key = key.encode('utf-8')
@@ -90,48 +89,16 @@ class ClientHandler():
         self.__send_response(request, response)
 
     def __send_response(self, request, response):
-        response_str = f"{response['version']} {response['status']}\r\n"
-
-        for key in response['headers']:
-            response_str += f"{key}: {response['headers'][key]}\r\n"
-        response_str += f"\r\n{response['body']}"
-
-        self.client.sendall(response_str.encode())
+        # student implement
+        # send the response
 
         # Log
         print(f"{self.address[0]} - - {datetime.now().strftime('%d/%m/%y %H:%M:%S')} \"{request['method']} {request['path']} {request['version']}\" {response['status']} -")
 
     def __recv_loop(self):
-        try:
-            # Recv request
-            recv_bytes = self.client.recv(4096)
-
-            # check connection
-            if recv_bytes == "":
-                self.alive = False
-                self.client.close()
-                return
-
-            # parse request
-            request = Parser.parse_reqeust(recv_bytes.decode())
-            if request == None:
-                method = ""
-            else:
-                method = request['method']
-            # Check the method and path
-            if method == "GET":
-                self.__do_get(request)
-            elif method == "POST":
-                self.__do_post(request)
-            else:
-                self.__send_response(request, self.__bad_request_response())
-
-            # Close the connection with the client
-            self.client.close()
-            pass
-        except:
-            self.alive = False
-            pass
+        # student implement
+        # recv data and handle the request
+        pass
 
     def close(self):
         self.alive = False
